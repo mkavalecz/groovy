@@ -36,20 +36,20 @@ final class AccessPermissionChecker {
 
     private static void checkAccessPermission(Class<?> declaringClass, final int modifiers, boolean isAccessible) {
         final SecurityManager securityManager = System.getSecurityManager();
+
+        final boolean hasProtectedFlag = (modifiers & (Modifier.PROTECTED)) != 0;
+        final boolean hasPublicFlag = (modifiers & (Modifier.PUBLIC)) != 0;
+        final boolean declaringClassHasPublicFlag = (declaringClass.getModifiers() & Modifier.PUBLIC) != 0;
+        final boolean excludedFromPermissionCheck = GroovyObject.class.isAssignableFrom(declaringClass) ||
+                (hasPublicFlag && (declaringClassHasPublicFlag || declaringClass.isAnonymousClass()));
+
         if (securityManager != null && isAccessible) {
-            if (((modifiers & Modifier.PRIVATE) != 0
-                    || ((modifiers & (Modifier.PUBLIC | Modifier.PROTECTED)) == 0
-                    && packageCanNotBeAddedAnotherClass(declaringClass)))
-                    && !GroovyObject.class.isAssignableFrom(declaringClass)) {
-                securityManager.checkPermission(REFLECT_PERMISSION);
-            } else if ((modifiers & (Modifier.PROTECTED)) != 0 && declaringClass.equals(ClassLoader.class)) {
+            if (hasProtectedFlag && declaringClass.equals(ClassLoader.class)) {
                 securityManager.checkCreateClassLoader();
+            } else if (!excludedFromPermissionCheck) {
+                securityManager.checkPermission(REFLECT_PERMISSION);
             }
         }
-    }
-
-    private static boolean packageCanNotBeAddedAnotherClass(Class<?> declaringClass) {
-        return declaringClass.getName().startsWith("java.");
     }
 
     static void checkAccessPermission(Method method) {
