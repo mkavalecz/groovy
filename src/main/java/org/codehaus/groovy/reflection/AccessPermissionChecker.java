@@ -18,23 +18,38 @@
  */
 package org.codehaus.groovy.reflection;
 
-import groovy.lang.GroovyObject;
-
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ReflectPermission;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.groovy.util.SystemUtil;
+
+import groovy.lang.GroovyObject;
 
 @SuppressWarnings("removal") // TODO future Groovy versions should deprecate then remove this class
 final class AccessPermissionChecker {
 
     private static final ReflectPermission REFLECT_PERMISSION = new ReflectPermission("suppressAccessChecks");
+    private static final List<String> blacklist;
+
+    static {
+        String blacklistString = SystemUtil.getSystemPropertySafe("groovy.blacklist", null);
+        if(blacklistString != null) {
+            blacklist = Arrays.asList(blacklistString.split(","));
+        } else {
+            blacklist = new ArrayList<>();
+        }
+    }
 
     private AccessPermissionChecker() {
     }
 
-    private static void checkAccessPermission(Class<?> declaringClass, final int modifiers, boolean isAccessible) {
+    private static void checkAccessPermission(Class<?> declaringClass, final String name, final int modifiers, boolean isAccessible) {
         final SecurityManager securityManager = System.getSecurityManager();
 
         final boolean hasProtectedFlag = (modifiers & (Modifier.PROTECTED)) != 0;
@@ -46,15 +61,20 @@ final class AccessPermissionChecker {
         if (securityManager != null && isAccessible) {
             if (hasProtectedFlag && declaringClass.equals(ClassLoader.class)) {
                 securityManager.checkCreateClassLoader();
-            } else if (!excludedFromPermissionCheck) {
+            } else if (!excludedFromPermissionCheck || isBlacklisted(name)) {
                 securityManager.checkPermission(REFLECT_PERMISSION);
             }
         }
     }
 
+    private static boolean isBlacklisted(String name) {
+        return blacklist.stream().anyMatch(name::startsWith);
+    }
+
     static void checkAccessPermission(Method method) {
         try {
-            checkAccessPermission(method.getDeclaringClass(), method.getModifiers(), method.isAccessible());
+            String qualifiedName = String.join(".", method.getDeclaringClass().getTypeName(),  method.getName());
+            checkAccessPermission(method.getDeclaringClass(), qualifiedName, method.getModifiers(), method.isAccessible());
         } catch (java.security.AccessControlException e) {
             throw createCacheAccessControlExceptionOf(method, e);
         }
@@ -62,7 +82,8 @@ final class AccessPermissionChecker {
 
     static void checkAccessPermission(Constructor constructor) {
         try {
-            checkAccessPermission(constructor.getDeclaringClass(), constructor.getModifiers(), constructor.isAccessible());
+            String qualifiedName = constructor.getDeclaringClass().getTypeName();
+            checkAccessPermission(constructor.getDeclaringClass(), qualifiedName, constructor.getModifiers(), constructor.isAccessible());
         } catch (java.security.AccessControlException e) {
             throw createCacheAccessControlExceptionOf(constructor, e);
         }
@@ -84,7 +105,8 @@ final class AccessPermissionChecker {
 
     static void checkAccessPermission(Field field) {
         try {
-            checkAccessPermission(field.getDeclaringClass(), field.getModifiers(), field.isAccessible());
+            String qualifiedName = String.join(".", field.getDeclaringClass().getTypeName(),  field.getName());
+            checkAccessPermission(field.getDeclaringClass(), qualifiedName, field.getModifiers(), field.isAccessible());
         } catch (java.security.AccessControlException e) {
             throw createCacheAccessControlExceptionOf(field, e);
         }
