@@ -54,17 +54,31 @@ final class AccessPermissionChecker {
 
         final boolean hasProtectedFlag = (modifiers & (Modifier.PROTECTED)) != 0;
         final boolean hasPublicFlag = (modifiers & (Modifier.PUBLIC)) != 0;
-        final boolean declaringClassHasPublicFlag = (declaringClass.getModifiers() & Modifier.PUBLIC) != 0;
-        final boolean excludedFromPermissionCheck = GroovyObject.class.isAssignableFrom(declaringClass) ||
-                (hasPublicFlag && (declaringClassHasPublicFlag || declaringClass.isAnonymousClass()));
+
+        final boolean accessGranted = (hasPublicFlag && classChainIsPublic(declaringClass)) ||
+                GroovyObject.class.isAssignableFrom(declaringClass);
 
         if (securityManager != null && isAccessible) {
             if (hasProtectedFlag && declaringClass.equals(ClassLoader.class)) {
                 securityManager.checkCreateClassLoader();
-            } else if (!excludedFromPermissionCheck || isBlacklisted(name)) {
+            } else if (isBlacklisted(name) || !accessGranted) {
                 securityManager.checkPermission(REFLECT_PERMISSION);
             }
         }
+    }
+
+    private static boolean classChainIsPublic(Class<?> declaringClass) {
+        Class<?> clazz = declaringClass;
+        while(clazz != null) {
+            final boolean hasPublicFlag = (clazz.getModifiers() & Modifier.PUBLIC) != 0;
+
+            if(!clazz.isAnonymousClass() && !hasPublicFlag) {
+                return false;
+            }
+            clazz = clazz.getDeclaringClass();
+        }
+
+        return true;
     }
 
     private static boolean isBlacklisted(String name) {
